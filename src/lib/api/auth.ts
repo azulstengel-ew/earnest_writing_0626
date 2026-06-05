@@ -1,5 +1,5 @@
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
-import { promisify } from "util";
+import { scrypt, randomBytes, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
