@@ -1,0 +1,878 @@
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchProjectsFn, saveProjectFn, deleteProjectFn } from "./api/server-fns";
+
+export type ProjectType = "novel" | "screenplay" | "academic" | "essay";
+export type ChapterStatus = "not-started" | "in-progress" | "done";
+export type StickyColor = "yellow" | "coral" | "sage" | "powder" | "lavender";
+
+export type Sticky = { id: string; text: string; color: StickyColor; x: number; y: number };
+
+export type Comment = {
+  id: string; anchorText: string; text: string; createdAt: string; resolved: boolean;
+};
+
+export type ChapterBrief = {
+  objective: string; audience: string; tone: string;
+  keyMessage: string; wordLimit?: number; channel: string;
+};
+
+export type HeadlineVariation = { id: string; text: string; isLive: boolean };
+export type CtaVariation = { id: string; text: string; isLive: boolean };
+export type ChapterVariations = { headlines: HeadlineVariation[]; ctas: CtaVariation[] };
+
+export type ArgumentEntry = {
+  id: string; claim: string; evidence: string; counter: string; response: string;
+};
+
+export type Chapter = {
+  id: string; number: number; title: string; description: string;
+  status: ChapterStatus; words: number; target: number; deadline?: string;
+  body: string; ideas: Sticky[]; notes: string; comments: Comment[];
+  mood?: string;
+  brief?: ChapterBrief;
+  variations?: ChapterVariations;
+  platform?: string;
+  arguments?: ArgumentEntry[];
+};
+
+export type CharacterRole = "protagonist" | "supporting" | "minor";
+export type ConnectionType =
+  | "family" | "romantic" | "antagonistic" | "alliance" | "mentor-student" | "custom";
+
+export type CharacterConnection = {
+  id: string; fromId: string; toId: string; type: ConnectionType; label: string; color?: string;
+};
+
+export type Character = {
+  id: string; name: string; role: CharacterRole; motivation: string; traits: string[];
+  backstory: string; age?: string; height?: string; build?: string; hair?: string;
+  eyes?: string; distinguishing?: string; appearance?: string;
+  chapterIds: string[]; x: number; y: number; color: string;
+};
+
+export type ArcStatus = "planned" | "active" | "resolved";
+export type ArcType = "main" | "subplot";
+
+export type PlotArc = {
+  id: string; title: string; type: ArcType; status: ArcStatus;
+  startPct: number; endPct: number; characterIds: string[];
+};
+
+export type StoryFramework = "three-act" | "save-the-cat" | "hero-journey" | "custom";
+
+export type CustomAct = {
+  id: string; name: string; startPct: number; endPct: number; color: string;
+};
+
+export type CustomBeat = {
+  id: string; name: string; pct: number; color: string;
+};
+
+export type ResearchSnippet = {
+  id: string;
+  question: string;
+  answer: string;
+  savedAt: string;
+};
+
+export type Citation = {
+  id: string;
+  authors: string;
+  title: string;
+  year: string;
+  journal?: string;
+  url?: string;
+  doi?: string;
+  pages?: string;
+  style: "apa" | "mla" | "harvard" | "chicago";
+};
+
+export type Persona = {
+  id: string;
+  name: string;
+  ageRange: string;
+  painPoints: string;
+  motivations: string;
+  tonePreferences: string;
+};
+
+export type ABVersion = {
+  id: string;
+  label: "A" | "B";
+  content: string;
+  isLive: boolean;
+  notes: string;
+};
+
+export type HashtagSet = {
+  id: string;
+  name: string;
+  tags: string;
+  platform: string;
+};
+
+export type CanvasObjectType = "sticky" | "textbox" | "image" | "shape" | "arrow";
+
+export type CanvasObject = {
+  id: string;
+  type: CanvasObjectType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content?: string;
+  color?: string;
+  fontSize?: "sm" | "md" | "lg";
+  imageUrl?: string;
+  shapeType?: "rect" | "rounded" | "circle" | "diamond";
+  strokeColor?: string;
+  zIndex: number;
+};
+
+export type DrawStroke = {
+  id: string;
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+};
+
+export type CanvasData = {
+  objects: CanvasObject[];
+  strokes: DrawStroke[];
+  viewX: number;
+  viewY: number;
+  zoom: number;
+};
+
+export type CalendarEventType = "session" | "deadline";
+
+export type CalendarEvent = {
+  id: string;
+  type: CalendarEventType;
+  date: string;          // YYYY-MM-DD
+  targetWords?: number;  // for sessions
+  chapterId?: string;    // for deadlines
+  completed?: boolean;
+};
+
+/* ── Themes ── */
+export type ProjectTheme =
+  | "books-memoir"
+  | "screenplays-tv"
+  | "poetry-verse"
+  | "copywriting"
+  | "ads-campaigns"
+  | "social-media"
+  | "newsletter"
+  | "dissertation"
+  | "essays"
+  | "journaling"
+  | "ideating";
+
+export type ThemeConfig = {
+  label: string;
+  desc: string;
+  dark: boolean;
+  bg: string;
+  bgHsl: string;
+  sidebar: string;
+  accent: string;
+  accentHsl: string;
+  accentFg: string;
+  cardTint: string;
+  headingFont: string;
+  uiFont: string;
+  bodyFont: string;
+};
+
+export const THEME_CONFIGS: Record<ProjectTheme, ThemeConfig> = {
+  "books-memoir": {
+    label: "Books & Memoir",
+    desc: "Novels, short stories, memoirs, long-form fiction.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#FEF0E4",
+    accent: "#F47920",
+    accentHsl: "27 91% 54%",
+    accentFg: "#ffffff",
+    cardTint: "#FEF0E4",
+    headingFont: "'Cormorant Garamond', Georgia, serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'Cormorant Garamond', Georgia, serif",
+  },
+  "screenplays-tv": {
+    label: "Screenplays & TV",
+    desc: "Feature scripts, pilots, TV episodes.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#FFFBE6",
+    accent: "#F5C518",
+    accentHsl: "48 91% 53%",
+    accentFg: "#1B2A4A",
+    cardTint: "#FFFBE6",
+    headingFont: "'Special Elite', 'Courier New', monospace",
+    uiFont: "'Courier Prime', 'Courier New', monospace",
+    bodyFont: "'Courier Prime', 'Courier New', monospace",
+  },
+  "poetry-verse": {
+    label: "Poetry & Verse",
+    desc: "Poems, verse collections, lyric essays.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#FAEAEA",
+    accent: "#C8394A",
+    accentHsl: "354 56% 50%",
+    accentFg: "#ffffff",
+    cardTint: "#FAEAEA",
+    headingFont: "'Cormorant Garamond', Georgia, serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'Cormorant Garamond', Georgia, serif",
+  },
+  "copywriting": {
+    label: "Copywriting",
+    desc: "Copy, web content, brand voice, editorial.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#E8F0F8",
+    accent: "#2E6DA4",
+    accentHsl: "210 56% 41%",
+    accentFg: "#ffffff",
+    cardTint: "#E8F0F8",
+    headingFont: "'IM Fell English', Georgia, serif",
+    uiFont: "'IBM Plex Mono', monospace",
+    bodyFont: "'IBM Plex Mono', monospace",
+  },
+  "ads-campaigns": {
+    label: "Ads & Campaigns",
+    desc: "Ad copy, campaign briefs, creative concepts.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#FFF0F0",
+    accent: "#FF5050",
+    accentHsl: "0 100% 66%",
+    accentFg: "#ffffff",
+    cardTint: "#FFF0F0",
+    headingFont: "'Bebas Neue', Impact, sans-serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'DM Sans', sans-serif",
+  },
+  "social-media": {
+    label: "Social Media",
+    desc: "Posts, threads, captions, platform content.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#E0FAF6",
+    accent: "#00C2A8",
+    accentHsl: "172 100% 38%",
+    accentFg: "#ffffff",
+    cardTint: "#E0FAF6",
+    headingFont: "'Nunito', sans-serif",
+    uiFont: "'Inter', sans-serif",
+    bodyFont: "'Nunito', sans-serif",
+  },
+  "newsletter": {
+    label: "Newsletter",
+    desc: "Issues, series, subscriber content.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#FEF5E4",
+    accent: "#E8A020",
+    accentHsl: "36 81% 52%",
+    accentFg: "#ffffff",
+    cardTint: "#FEF5E4",
+    headingFont: "'Merriweather', Georgia, serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'Merriweather', Georgia, serif",
+  },
+  "dissertation": {
+    label: "Dissertation & Thesis",
+    desc: "Academic research, PhDs, theses.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#EEF6EC",
+    accent: "#4A7C3F",
+    accentHsl: "111 32% 37%",
+    accentFg: "#ffffff",
+    cardTint: "#EEF6EC",
+    headingFont: "'Libre Baskerville', Georgia, serif",
+    uiFont: "'IBM Plex Sans', sans-serif",
+    bodyFont: "'Libre Baskerville', Georgia, serif",
+  },
+  "essays": {
+    label: "Essays & Papers",
+    desc: "Academic essays, articles, papers.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#F3FAE8",
+    accent: "#7AB648",
+    accentHsl: "93 41% 50%",
+    accentFg: "#ffffff",
+    cardTint: "#F3FAE8",
+    headingFont: "'Libre Baskerville', Georgia, serif",
+    uiFont: "'IBM Plex Sans', sans-serif",
+    bodyFont: "'Libre Baskerville', Georgia, serif",
+  },
+  "journaling": {
+    label: "Journaling",
+    desc: "Diaries, personal essays, daily writing.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#F0EBF8",
+    accent: "#7B5EA7",
+    accentHsl: "271 29% 51%",
+    accentFg: "#ffffff",
+    cardTint: "#F0EBF8",
+    headingFont: "'Lora', Georgia, serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'Lora', Georgia, serif",
+  },
+  "ideating": {
+    label: "Ideating",
+    desc: "Brainstorms, mind maps, freeform thinking.",
+    dark: false,
+    bg: "#F5F0E8",
+    bgHsl: "36 33% 93%",
+    sidebar: "#E8F4FC",
+    accent: "#6BAED6",
+    accentHsl: "207 55% 63%",
+    accentFg: "#ffffff",
+    cardTint: "#E8F4FC",
+    headingFont: "'DM Sans', sans-serif",
+    uiFont: "'DM Sans', sans-serif",
+    bodyFont: "'DM Sans', sans-serif",
+  },
+};
+
+const VALID_THEMES = new Set<string>([
+  "books-memoir", "screenplays-tv", "poetry-verse",
+  "copywriting", "ads-campaigns", "social-media", "newsletter",
+  "dissertation", "essays", "journaling", "ideating",
+]);
+
+function themeFromLegacyType(type: ProjectType): ProjectTheme {
+  switch (type) {
+    case "novel":      return "books-memoir";
+    case "screenplay": return "screenplays-tv";
+    case "academic":   return "dissertation";
+    case "essay":      return "essays";
+  }
+}
+
+export function isStoryTheme(theme: ProjectTheme): boolean {
+  return theme === "books-memoir" || theme === "screenplays-tv" || theme === "poetry-verse";
+}
+
+export type Project = {
+  id: string; title: string; type: ProjectType; theme: ProjectTheme;
+  premise: string; target: number; weeklyWordTarget: number;
+  createdAt: string; archived: boolean;
+  chapters: Chapter[]; characters: Character[]; connections: CharacterConnection[];
+  arcs: PlotArc[];
+  framework: StoryFramework;
+  customActs: CustomAct[];
+  customBeats: CustomBeat[];
+  tensionCurve: number[];
+  events: CalendarEvent[];
+  researchSnippets: ResearchSnippet[];
+  notes: string;
+  canvasData?: CanvasData;
+  worldEntries?: any[];
+  timelineEvents?: any[];
+  outlineItems?: any[];
+  contentPosts?: any[];
+  // Category-specific optional fields
+  citations?: Citation[];
+  personas?: Persona[];
+  abVersions?: Record<string, ABVersion[]>;
+  hashtagLibrary?: HashtagSet[];
+  platformPosts?: Record<string, string>;
+};
+
+const TENSION_PTS = 20;
+
+function defaultTension(): number[] {
+  return Array.from({ length: TENSION_PTS }, (_, i) => {
+    const t = i / (TENSION_PTS - 1);
+    return Math.round(15 + 75 * (Math.sin(Math.PI * t) * 0.7 + 0.3 * Math.sin(2 * Math.PI * t * 0.9) * 0.3 + t * 0.4));
+  }).map((v) => Math.min(100, Math.max(0, v)));
+}
+
+const seed = (): Project[] => [
+  {
+    id: "1",
+    title: "The Importance of Being Earnest",
+    type: "screenplay",
+    theme: "screenplays-tv",
+    premise: "A trivial comedy for serious people.",
+    target: 25000,
+    weeklyWordTarget: 2000,
+    createdAt: new Date().toISOString(),
+    archived: false,
+    framework: "three-act",
+    customActs: [],
+    customBeats: [],
+    tensionCurve: defaultTension(),
+    events: [],
+    researchSnippets: [],
+    notes: "",
+    arcs: [
+      { id: "a1", title: "The Double Identity", type: "main", status: "active", startPct: 0, endPct: 100, characterIds: ["ch1", "ch2"] },
+      { id: "a2", title: "Jack & Gwendolen's Romance", type: "subplot", status: "active", startPct: 0, endPct: 100, characterIds: ["ch1", "ch3"] },
+      { id: "a3", title: "Algernon & Cecily", type: "subplot", status: "planned", startPct: 33, endPct: 100, characterIds: ["ch2"] },
+    ],
+    chapters: [
+      { id: "c1", number: 1, title: "Act I — A Morning Room in Half-Moon Street", description: "Algernon receives an unexpected guest.", status: "in-progress", words: 4820, target: 6000, body: "Algernon was at the piano, playing — badly, as always — when the bell rang.", ideas: [], notes: "", comments: [] },
+      { id: "c2", number: 2, title: "Act II — The Garden at the Manor House", description: "Cecily meets her cousin for the first time.", status: "in-progress", words: 5210, target: 8000, body: "Roses. A wrought-iron bench. Cecily, watering nothing in particular…", ideas: [], notes: "", comments: [] },
+      { id: "c3", number: 3, title: "Act III — Drawing Room", description: "The truth, somewhat reluctantly, emerges.", status: "not-started", words: 0, target: 8000, body: "", ideas: [], notes: "", comments: [] },
+    ],
+    characters: [
+      { id: "ch1", name: "Jack Worthing", role: "protagonist", motivation: "To marry Gwendolen and escape his double life as Ernest.", traits: ["charming", "duplicitous", "earnest", "romantic"], backstory: "Found in a handbag at Victoria Station, raised by Mr. Thomas Cardew.", age: "29", height: "5'11\"", build: "Athletic", hair: "Dark brown", eyes: "Blue", distinguishing: "Distinguished jawline, always immaculately dressed", appearance: "Handsome, well-dressed Victorian gentleman", chapterIds: ["c1", "c2", "c3"], x: 300, y: 200, color: "#3B5998" },
+      { id: "ch2", name: "Algernon Moncrieff", role: "supporting", motivation: "To enjoy life, avoid debt, and pursue Cecily.", traits: ["witty", "idle", "charming", "mischievous"], backstory: "Jack's fashionable friend in London. Invents an invalid friend called Bunbury.", age: "27", height: "5'10\"", build: "Slim", hair: "Fair", eyes: "Green", distinguishing: "Perpetual air of amusement", appearance: "Elegant, languid, always eating", chapterIds: ["c1", "c2", "c3"], x: 560, y: 180, color: "#7C4DFF" },
+      { id: "ch3", name: "Gwendolen Fairfax", role: "supporting", motivation: "To marry a man named Ernest.", traits: ["sophisticated", "headstrong", "witty", "romantic"], backstory: "Algernon's cousin and the object of Jack's affections. Daughter of Lady Bracknell.", age: "25", height: "5'6\"", build: "Slender", hair: "Chestnut", eyes: "Dark brown", distinguishing: "Always carries a diary", appearance: "Elegant, self-possessed, fashionable", chapterIds: ["c1", "c3"], x: 420, y: 380, color: "#E91E63" },
+      { id: "ch4", name: "Lady Bracknell", role: "minor", motivation: "To maintain social standing and secure advantageous marriages.", traits: ["imperious", "snobbish", "formidable", "comic"], backstory: "Gwendolen's mother and Algernon's aunt.", age: "55", appearance: "Imposing, elaborately dressed, perpetually disapproving", chapterIds: ["c1", "c3"], x: 180, y: 380, color: "#795548" },
+    ],
+    connections: [
+      { id: "cn1", fromId: "ch1", toId: "ch2", type: "alliance", label: "Best friends" },
+      { id: "cn2", fromId: "ch1", toId: "ch3", type: "romantic", label: "Engaged" },
+      { id: "cn3", fromId: "ch3", toId: "ch4", type: "family", label: "Mother / daughter" },
+      { id: "cn4", fromId: "ch2", toId: "ch4", type: "family", label: "Nephew / aunt" },
+    ],
+  },
+];
+
+type Ctx = {
+  projects: Project[];
+  hydrated: boolean;
+  getProject: (id: string) => Project | undefined;
+  createProject: (input: { title: string; theme: ProjectTheme; premise?: string; target?: number }) => Project;
+  updateProject: (id: string, patch: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
+  duplicateProject: (id: string) => Project;
+  archiveProject: (id: string, archived: boolean) => void;
+  createChapter: (projectId: string, input: { title: string; description?: string; target?: number; deadline?: string }) => Chapter;
+  updateChapter: (projectId: string, chapterId: string, patch: Partial<Chapter>) => void;
+  deleteChapter: (projectId: string, chapterId: string) => void;
+  reorderChapters: (projectId: string, orderedIds: string[]) => void;
+  addComment: (projectId: string, chapterId: string, comment: Omit<Comment, "id" | "createdAt" | "resolved">) => void;
+  resolveComment: (projectId: string, chapterId: string, commentId: string) => void;
+  deleteComment: (projectId: string, chapterId: string, commentId: string) => void;
+  createCharacter: (projectId: string, input: Partial<Character> & { name: string }) => Character;
+  updateCharacter: (projectId: string, characterId: string, patch: Partial<Character>) => void;
+  deleteCharacter: (projectId: string, characterId: string) => void;
+  addConnection: (projectId: string, conn: Omit<CharacterConnection, "id">) => void;
+  removeConnection: (projectId: string, connectionId: string) => void;
+  createArc: (projectId: string, input: Omit<PlotArc, "id">) => PlotArc;
+  updateArc: (projectId: string, arcId: string, patch: Partial<PlotArc>) => void;
+  deleteArc: (projectId: string, arcId: string) => void;
+  updateFramework: (projectId: string, framework: StoryFramework) => void;
+  updateCustomActs: (projectId: string, acts: CustomAct[]) => void;
+  updateCustomBeats: (projectId: string, beats: CustomBeat[]) => void;
+  updateTensionCurve: (projectId: string, curve: number[]) => void;
+  createEvent: (projectId: string, event: Omit<CalendarEvent, "id">) => CalendarEvent;
+  updateEvent: (projectId: string, eventId: string, patch: Partial<CalendarEvent>) => void;
+  deleteEvent: (projectId: string, eventId: string) => void;
+  saveResearchSnippet: (projectId: string, snippet: Omit<ResearchSnippet, "id" | "savedAt">) => ResearchSnippet;
+  deleteResearchSnippet: (projectId: string, snippetId: string) => void;
+  addCitation: (projectId: string, citation: Omit<Citation, "id">) => Citation;
+  deleteCitation: (projectId: string, citationId: string) => void;
+  addPersona: (projectId: string, persona: Omit<Persona, "id">) => Persona;
+  deletePersona: (projectId: string, personaId: string) => void;
+  addHashtagSet: (projectId: string, set: Omit<HashtagSet, "id">) => HashtagSet;
+  deleteHashtagSet: (projectId: string, setId: string) => void;
+  updateCanvas: (projectId: string, data: Partial<CanvasData>) => void;
+  addCanvasObject: (projectId: string, obj: Omit<CanvasObject, "id" | "zIndex">) => CanvasObject;
+  updateCanvasObject: (projectId: string, objectId: string, patch: Partial<CanvasObject>) => void;
+  deleteCanvasObject: (projectId: string, objectId: string) => void;
+};
+
+const ProjectsContext = createContext<Ctx | null>(null);
+
+function migrate(raw: Project[]): Project[] {
+  return raw.map((p) => {
+    const totalCh = Math.max((p.chapters ?? []).length, 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migrateArc = (a: any): PlotArc => {
+      if (typeof a.startPct === "number") return a as PlotArc;
+      return { ...a, startPct: Math.round(((a.startChapter - 1) / totalCh) * 100), endPct: Math.round((Math.min(a.endChapter, totalCh) / totalCh) * 100) };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migrateAct = (a: any): CustomAct => {
+      if (typeof a.startPct === "number") return a as CustomAct;
+      return { ...a, startPct: Math.round(((a.startChapter - 1) / totalCh) * 100), endPct: Math.round((a.endChapter / totalCh) * 100) };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migrateBeat = (b: any): CustomBeat => {
+      if (typeof b.pct === "number") return b as CustomBeat;
+      return { ...b, pct: Math.round(((b.chapter - 0.5) / totalCh) * 100) };
+    };
+    return {
+      ...p,
+      theme: (p.theme && VALID_THEMES.has(p.theme)) ? p.theme : themeFromLegacyType(p.type ?? "novel"),
+      archived: p.archived ?? false,
+      weeklyWordTarget: p.weeklyWordTarget ?? 1000,
+      characters: p.characters ?? [],
+      connections: p.connections ?? [],
+      arcs: (p.arcs ?? []).map(migrateArc),
+      events: p.events ?? [],
+      framework: p.framework ?? "three-act",
+      customActs: (p.customActs ?? []).map(migrateAct),
+      customBeats: (p.customBeats ?? []).map(migrateBeat),
+      tensionCurve: Array.isArray(p.tensionCurve) && p.tensionCurve.length === TENSION_PTS
+        ? p.tensionCurve
+        : defaultTension(),
+      chapters: (p.chapters ?? []).map((c) => ({ ...c, comments: c.comments ?? [] })),
+      researchSnippets: p.researchSnippets ?? [],
+      notes: p.notes ?? "",
+      citations: p.citations ?? [],
+      personas: p.personas ?? [],
+      abVersions: p.abVersions ?? {},
+      hashtagLibrary: p.hashtagLibrary ?? [],
+      platformPosts: p.platformPosts ?? {},
+      canvasData: p.canvasData ?? { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 },
+      worldEntries: p.worldEntries ?? [],
+      timelineEvents: p.timelineEvents ?? [],
+      outlineItems: p.outlineItems ?? [],
+      contentPosts: p.contentPosts ?? [],
+    };
+  });
+}
+
+export function ProjectsProvider({ children }: { children: ReactNode }) {
+  const qc = useQueryClient();
+
+  const { data: projects = [], isSuccess } = useQuery<Project[]>({
+    queryKey: ["projects"],
+    queryFn: () => fetchProjectsFn(),
+    retry: 1,
+    staleTime: 30 * 1000,
+  });
+
+  const hydrated = isSuccess;
+
+  // Optimistic update helper: mutate cache immediately, then persist to DB in background.
+  // The DB save is fire-and-forget; on failure the cache stays optimistic until next fetch.
+  function mutate(updater: (ps: Project[]) => Project[], projectId?: string) {
+    qc.setQueryData<Project[]>(["projects"], (old = []) => updater(old));
+    // Persist the affected project(s) after the state is updated
+    if (projectId) {
+      // Schedule save after state flush
+      setTimeout(() => {
+        const current = qc.getQueryData<Project[]>(["projects"]) ?? [];
+        const p = current.find((x) => x.id === projectId);
+        if (p) saveProjectFn({ data: { project: p } }).catch(console.error);
+      }, 0);
+    }
+  }
+
+  function mutateAndDelete(projectId: string) {
+    qc.setQueryData<Project[]>(["projects"], (old = []) => old.filter((p) => p.id !== projectId));
+    deleteProjectFn({ data: { projectId } }).catch(console.error);
+  }
+
+  const value = useMemo<Ctx>(() => ({
+    projects,
+    hydrated,
+    getProject: (id) => projects.find((p) => p.id === id),
+
+    createProject: ({ title, theme, premise = "", target = 50000 }) => {
+      const project: Project = {
+        id: crypto.randomUUID(), title, theme,
+        type: theme === "screenplays-tv" ? "screenplay" : theme === "dissertation" ? "academic" : "novel",
+        premise, target, weeklyWordTarget: 1000,
+        createdAt: new Date().toISOString(), archived: false,
+        chapters: [], characters: [], connections: [], arcs: [], events: [], researchSnippets: [],
+        notes: "",
+        framework: "three-act", customActs: [], customBeats: [], tensionCurve: defaultTension(),
+        citations: [], personas: [], abVersions: {}, hashtagLibrary: [], platformPosts: {},
+        canvasData: { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 },
+        worldEntries: [],
+        timelineEvents: [],
+        outlineItems: [],
+        contentPosts: [],
+      };
+      mutate((ps) => [project, ...ps], project.id);
+      return project;
+    },
+
+    updateProject: (id, patch) =>
+      mutate((ps) => ps.map((p) => p.id === id ? { ...p, ...patch } : p), id),
+
+    deleteProject: (id) => mutateAndDelete(id),
+
+    duplicateProject: (id) => {
+      const src = projects.find((p) => p.id === id);
+      if (!src) throw new Error("Project not found");
+      const copy: Project = {
+        ...JSON.parse(JSON.stringify(src)),
+        id: crypto.randomUUID(),
+        title: `${src.title} (copy)`,
+        createdAt: new Date().toISOString(),
+        archived: false,
+      };
+      mutate((ps) => {
+        const idx = ps.findIndex((p) => p.id === id);
+        const next = [...ps];
+        next.splice(idx + 1, 0, copy);
+        return next;
+      }, copy.id);
+      return copy;
+    },
+
+    archiveProject: (id, archived) =>
+      mutate((ps) => ps.map((p) => p.id === id ? { ...p, archived } : p), id),
+
+    createChapter: (projectId, { title, description = "", target = 2000, deadline }) => {
+      const chapter: Chapter = {
+        id: crypto.randomUUID(), number: 0, title, description,
+        status: "not-started", words: 0, target, deadline,
+        body: "", ideas: [], notes: "", comments: [], createdAt: new Date().toISOString(),
+      };
+      mutate((ps) => ps.map((p) => {
+        if (p.id !== projectId) return p;
+        const chapters = [...p.chapters, { ...chapter, number: p.chapters.length + 1 }];
+        return { ...p, chapters };
+      }), projectId);
+      return chapter;
+    },
+
+    updateChapter: (projectId, chapterId, patch) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, chapters: p.chapters.map((c) => c.id === chapterId ? { ...c, ...patch } : c),
+      }), projectId),
+
+    deleteChapter: (projectId, chapterId) =>
+      mutate((ps) => ps.map((p) => {
+        if (p.id !== projectId) return p;
+        const chapters = p.chapters.filter((c) => c.id !== chapterId).map((c, i) => ({ ...c, number: i + 1 }));
+        return { ...p, chapters };
+      }), projectId),
+
+    reorderChapters: (projectId, orderedIds) =>
+      mutate((ps) => ps.map((p) => {
+        if (p.id !== projectId) return p;
+        const map = new Map(p.chapters.map((c) => [c.id, c]));
+        const reordered = orderedIds.map((id, i) => {
+          const c = map.get(id); return c ? { ...c, number: i + 1 } : null;
+        }).filter(Boolean) as Chapter[];
+        return { ...p, chapters: reordered };
+      }), projectId),
+
+    addComment: (projectId, chapterId, comment) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, chapters: p.chapters.map((c) => c.id !== chapterId ? c : {
+          ...c, comments: [...c.comments, { ...comment, id: crypto.randomUUID(), createdAt: new Date().toISOString(), resolved: false }],
+        }),
+      }), projectId),
+
+    resolveComment: (projectId, chapterId, commentId) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, chapters: p.chapters.map((c) => c.id !== chapterId ? c : {
+          ...c, comments: c.comments.map((cm) => cm.id === commentId ? { ...cm, resolved: true } : cm),
+        }),
+      }), projectId),
+
+    deleteComment: (projectId, chapterId, commentId) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, chapters: p.chapters.map((c) => c.id !== chapterId ? c : {
+          ...c, comments: c.comments.filter((cm) => cm.id !== commentId),
+        }),
+      }), projectId),
+
+    createCharacter: (projectId, input) => {
+      const character: Character = {
+        id: crypto.randomUUID(), name: input.name, role: input.role ?? "minor",
+        motivation: input.motivation ?? "", traits: input.traits ?? [], backstory: input.backstory ?? "",
+        age: input.age, height: input.height, build: input.build, hair: input.hair, eyes: input.eyes,
+        distinguishing: input.distinguishing, appearance: input.appearance,
+        chapterIds: input.chapterIds ?? [],
+        x: input.x ?? 200 + Math.random() * 400, y: input.y ?? 150 + Math.random() * 200,
+        color: input.color ?? "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0"),
+      };
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, characters: [...p.characters, character] } : p), projectId);
+      return character;
+    },
+
+    updateCharacter: (projectId, characterId, patch) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, characters: p.characters.map((c) => c.id === characterId ? { ...c, ...patch } : c),
+      } : p), projectId),
+
+    deleteCharacter: (projectId, characterId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p,
+        characters: p.characters.filter((c) => c.id !== characterId),
+        connections: p.connections.filter((cn) => cn.fromId !== characterId && cn.toId !== characterId),
+      } : p), projectId),
+
+    addConnection: (projectId, conn) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, connections: [...p.connections, { ...conn, id: crypto.randomUUID() }],
+      } : p), projectId),
+
+    removeConnection: (projectId, connectionId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, connections: p.connections.filter((cn) => cn.id !== connectionId),
+      } : p), projectId),
+
+    createArc: (projectId, input) => {
+      const arc: PlotArc = { ...input, id: crypto.randomUUID() };
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, arcs: [...p.arcs, arc] } : p), projectId);
+      return arc;
+    },
+
+    updateArc: (projectId, arcId, patch) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, arcs: p.arcs.map((a) => a.id === arcId ? { ...a, ...patch } : a),
+      } : p), projectId),
+
+    deleteArc: (projectId, arcId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, arcs: p.arcs.filter((a) => a.id !== arcId),
+      } : p), projectId),
+
+    updateFramework: (projectId, framework) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, framework } : p), projectId),
+
+    updateCustomActs: (projectId, acts) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, customActs: acts } : p), projectId),
+
+    updateCustomBeats: (projectId, beats) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, customBeats: beats } : p), projectId),
+
+    updateTensionCurve: (projectId, curve) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, tensionCurve: curve } : p), projectId),
+
+    createEvent: (projectId, event) => {
+      const ev: CalendarEvent = { ...event, id: crypto.randomUUID() };
+      mutate((ps) => ps.map((p) => p.id === projectId ? { ...p, events: [...p.events, ev] } : p), projectId);
+      return ev;
+    },
+
+    updateEvent: (projectId, eventId, patch) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, events: p.events.map((e) => e.id === eventId ? { ...e, ...patch } : e),
+      } : p), projectId),
+
+    deleteEvent: (projectId, eventId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, events: p.events.filter((e) => e.id !== eventId),
+      } : p), projectId),
+
+    saveResearchSnippet: (projectId, input) => {
+      const snippet: ResearchSnippet = {
+        ...input, id: crypto.randomUUID(), savedAt: new Date().toISOString(),
+      };
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, researchSnippets: [snippet, ...(p.researchSnippets ?? [])],
+      } : p), projectId);
+      return snippet;
+    },
+
+    deleteResearchSnippet: (projectId, snippetId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, researchSnippets: (p.researchSnippets ?? []).filter((s) => s.id !== snippetId),
+      } : p), projectId),
+
+    addCitation: (projectId, citation) => {
+      const c: Citation = { ...citation, id: crypto.randomUUID() };
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, citations: [...(p.citations ?? []), c],
+      } : p), projectId);
+      return c;
+    },
+
+    deleteCitation: (projectId, citationId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, citations: (p.citations ?? []).filter((c) => c.id !== citationId),
+      } : p), projectId),
+
+    addPersona: (projectId, persona) => {
+      const pe: Persona = { ...persona, id: crypto.randomUUID() };
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, personas: [...(p.personas ?? []), pe],
+      } : p), projectId);
+      return pe;
+    },
+
+    deletePersona: (projectId, personaId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, personas: (p.personas ?? []).filter((pe) => pe.id !== personaId),
+      } : p), projectId),
+
+    addHashtagSet: (projectId, set) => {
+      const hs: HashtagSet = { ...set, id: crypto.randomUUID() };
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, hashtagLibrary: [...(p.hashtagLibrary ?? []), hs],
+      } : p), projectId);
+      return hs;
+    },
+
+    deleteHashtagSet: (projectId, setId) =>
+      mutate((ps) => ps.map((p) => p.id === projectId ? {
+        ...p, hashtagLibrary: (p.hashtagLibrary ?? []).filter((hs) => hs.id !== setId),
+      } : p), projectId),
+
+    updateCanvas: (projectId, data) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, canvasData: { ...(p.canvasData ?? { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 }), ...data },
+      }), projectId),
+
+    addCanvasObject: (projectId, obj) => {
+      const newObj: CanvasObject = { ...obj, id: crypto.randomUUID(), zIndex: 0 };
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, canvasData: {
+          ...(p.canvasData ?? { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 }),
+          objects: [...(p.canvasData?.objects ?? []), { ...newObj, zIndex: (p.canvasData?.objects ?? []).length }],
+        },
+      }), projectId);
+      return newObj;
+    },
+
+    updateCanvasObject: (projectId, objectId, patch) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, canvasData: {
+          ...(p.canvasData ?? { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 }),
+          objects: (p.canvasData?.objects ?? []).map((o) => o.id === objectId ? { ...o, ...patch } : o),
+        },
+      }), projectId),
+
+    deleteCanvasObject: (projectId, objectId) =>
+      mutate((ps) => ps.map((p) => p.id !== projectId ? p : {
+        ...p, canvasData: {
+          ...(p.canvasData ?? { objects: [], strokes: [], viewX: 0, viewY: 0, zoom: 1 }),
+          objects: (p.canvasData?.objects ?? []).filter((o) => o.id !== objectId),
+        },
+      }), projectId),
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [projects, hydrated, qc]);
+
+  return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;
+}
+
+export function useProjects() {
+  const ctx = useContext(ProjectsContext);
+  if (!ctx) throw new Error("useProjects must be used inside ProjectsProvider");
+  return ctx;
+}
+
+export const CONNECTION_COLORS: Record<ConnectionType, string> = {
+  family: "#F59E0B", romantic: "#E8A0BF", antagonistic: "#7F1D1D",
+  alliance: "#0D9488", "mentor-student": "#6B9E78", custom: "#9CA3AF",
+};
+
+export const CONNECTION_LABELS: Record<ConnectionType, string> = {
+  family: "Family", romantic: "Romantic", antagonistic: "Antagonistic",
+  alliance: "Alliance", "mentor-student": "Mentor / Student", custom: "Custom",
+};
